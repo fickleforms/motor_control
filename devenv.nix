@@ -13,6 +13,7 @@
     venv.enable = true;
     venv.requirements = ''
       pymodbus
+      pyserial
     '';
   };
 }
