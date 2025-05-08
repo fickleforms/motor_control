@@ -76,8 +76,9 @@ class Servo:
         return self.read_register(R.SYSTEM_VOLTAGE) / 327
 
     # returns a value in the range -1.0 to 1.0
+    # note the documented range is -32767 to 32767, but it appears to be actually 32000 based on comparisons to max output
     def output(self):
-        return from_twos_complement(self.read_register(R.SYSTEM_OUTPUT_PWM), 16) / 32767
+        return from_twos_complement(self.read_register(R.SYSTEM_OUTPUT_PWM), 16) / 32000
 
     # takes a value from 0 to 1.0
     # documented max might be 0.609? Docs are not good.
