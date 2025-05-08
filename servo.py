@@ -95,6 +95,14 @@ class Servo:
         response = self.client.read_holding_registers(R.ABSOLUTE_POSITION_LOW_16_BITS, count=2)
         return from_twos_complement(merge_16bit(response.registers), 32)
 
+    def wait_for_move_complete(self, l):
+        while True:
+            target = self.target_position()
+            l(target)
+            if (abs(target) < 10):
+                return
+            time.sleep(0.1)
+
 def merge_16bit(vals):
     return sum(v << (i * 16) for i, v in enumerate(vals))
 
@@ -119,12 +127,7 @@ def main():
     print("running test movement")
     s.turn([0, 1])
 
-    while True:
-        target = s.target_position()
-        print("target pos:", target)
-        if (abs(target) < 10):
-            break
-        time.sleep(0.1)
+    s.wait_for_move_complete(lambda p: print("target pos:", p))
 
     print("homing")
     s.home()
