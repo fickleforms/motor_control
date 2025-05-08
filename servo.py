@@ -1,3 +1,4 @@
+import time
 from enum import IntEnum
 from pymodbus.client import ModbusSerialClient
 
@@ -51,9 +52,7 @@ class Servo:
             value = result.registers[0]
             print(f"{r.name.ljust(max_length)} ({r.value:02X}) = {value}")
 
-    def set_slow_speeds(self):
-        self.write_register(R.MOTOR_TARGET_SPEED, 10)
-
+    # TODO: figure out which special function actually does homing
     def home(self):
         self.write_register(R.SPECIFIC_FUNCTION, 1)
 
@@ -64,11 +63,75 @@ class Servo:
     def write_register(self, reg, val):
         print(self.client.write_register(reg, val))
 
+    def read_register(self, reg):
+        return self.client.read_holding_registers(reg).registers[0]
+
+    def system_current(self):
+        return self.read_register(R.SYSTEM_CURRENT)
+
+    def speed(self):
+        return from_twos_complement(self.read_register(R.MOTOR_CURRENT_SPEED), 16) / 10
+
+    def voltage(self):
+        return self.read_register(R.SYSTEM_VOLTAGE) / 327
+
+    # returns a value in the range -1.0 to 1.0
+    def output(self):
+        return from_twos_complement(self.read_register(R.SYSTEM_OUTPUT_PWM), 16) / 32767
+
+    # takes a value from 0 to 1.0
+    # documented max might be 0.609? Docs are not good.
+    def set_max_output(self, m):
+        self.write_register(R.STILL_MAXIMUM_ALLOWED_OUTPUT, int(m * 1000))
+
+    def max_output(self):
+        return self.read_register(R.STILL_MAXIMUM_ALLOWED_OUTPUT) / 1000
+
+    def target_position(self):
+        response = self.client.read_holding_registers(R.TARGET_POSITION_LOW_16_BITS, count=2)
+        return from_twos_complement(merge_16bit(response.registers), 32)
+
+    def absolute_position(self):
+        response = self.client.read_holding_registers(R.ABSOLUTE_POSITION_LOW_16_BITS, count=2)
+        return from_twos_complement(merge_16bit(response.registers), 32)
+
+def merge_16bit(vals):
+    return sum(v << (i * 16) for i, v in enumerate(vals))
+
+# Convert a 16 or 32-bit value from unsigned to signed
+# if you have some weird system that doesn't use 2s complement this will fail
+def from_twos_complement(val, bits):
+    return int.from_bytes(val.to_bytes(bits // 8), signed=True)
+
+def watch(l):
+    while True:
+        l()
+        time.sleep(0.1)
+
 def main():
     s = Servo()
+    print("registers at startup")
     s.get_all_registers()
-    s.set_slow_speeds()
+    print("setting speed and max output")
+    s.write_register(R.MODBUS_ENABLE, 1)
+    s.write_register(R.MOTOR_TARGET_SPEED, 20)
+    s.set_max_output(0.1)
+    print("running test movement")
+    s.turn([0, 1])
+
+    while True:
+        target = s.target_position()
+        print("target pos:", target)
+        if (abs(target) < 10):
+            break
+        time.sleep(0.1)
+
+    print("homing")
     s.home()
+    while s.read_register(R.MODBUS_ENABLE):
+        print(s.output(), s.absolute_position(), s.max_output())
+    print("homing complete?")
+    s.get_all_registers()
 
 if __name__ == "__main__":
     main()
