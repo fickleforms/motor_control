@@ -1,6 +1,11 @@
 import time
 from enum import IntEnum
+
 from pymodbus.client import ModbusSerialClient
+from pymodbus.client.mixin import ModbusClientMixin
+
+DATATYPE = ModbusClientMixin.DATATYPE
+
 
 class ServoRegisters(IntEnum):
     MODBUS_ENABLE = 0x00
@@ -42,8 +47,8 @@ R = ServoRegisters
 PORT = "/dev/ttyUSB1"
 
 class Servo:
-    def __init__(self, p=PORT):
-        self.client = ModbusSerialClient(port=p, baudrate=19200, timeout=1, parity='N', stopbits=1, bytesize=8)
+    def __init__(self, p=PORT, **kwargs):
+        self.client = ModbusSerialClient(port=p, baudrate=19200, timeout=1, parity='N', stopbits=1, bytesize=8, **kwargs)
 
     def get_all_registers(self):
         max_length = R.length_of_longest_name()
@@ -94,7 +99,11 @@ class Servo:
 
     def absolute_position(self):
         response = self.client.read_holding_registers(R.ABSOLUTE_POSITION_LOW_16_BITS, count=2)
-        return from_twos_complement(merge_16bit(response.registers), 32)
+        mine = from_twos_complement(merge_16bit(response.registers), 32)
+        by_lib = self.client.convert_from_registers(response.registers, data_type=DATATYPE.INT32, word_order='little')
+        if mine != by_lib:
+            print("{mine} != {by_lib}!")
+        return by_lib
 
     def wait_for_move_complete(self, l):
         while True:
@@ -133,7 +142,7 @@ def main():
     print("homing")
     s.home()
     while s.read_register(R.MODBUS_ENABLE):
-        print(s.output(), s.absolute_position(), s.max_output())
+        print(s.output(), s.target_position(), s.absolute_position(), s.max_output())
     print("homing complete?")
     s.get_all_registers()
 
